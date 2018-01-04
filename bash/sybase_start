@@ -1,0 +1,135 @@
+#!/bin/bash
+#
+# Startup script for SAP ASE
+#  Arguments:
+#	$1: start|stop|restart|status
+#
+# Processname: dataserver
+#
+
+if [ "$(whoami)" != "sybase" ]; then
+        echo "Script must be run as user: sybase"
+        exit -1
+fi
+
+
+#Increase Max stack size 
+ulimit -s unlimited
+
+SYBASE=/opt/sybase
+readonly SERVER=FLSRV
+readonly SERVERPW=sybase
+readonly ADMINUSER=sa
+
+# Source environment variables.
+. $SYBASE/SYBASE.sh
+
+# Find the name of the script
+NAME=$(basename "$0")
+
+die() { err "EXIT: $1" && [ "$2" ] && [ "$2" -ge 0 ] && exit "$2" || exit 1; }  
+err() { out "ERROR: $*" 1>&2 |  tee -a "${LOG_FILE}" ; }
+out() { echo "$(date +%Y%m%dT%H%M%S%Z): $*" ; }
+dosql()
+{
+( echo "${SERVERPW}"
+cat  ) | isql -b -w9999 -U${ADMINUSER} -S${SERVER} -Dmaster
+}
+
+
+[ "$#" -eq 1 ] || die "1 argument required, $# provided"
+
+start() {
+    SYBASE_START=$"Starting ${NAME} service: "
+    2>&1 ;  $SYBASE/$SYBASE_ASE/bin/startserver \
+    -f $SYBASE/$SYBASE_ASE/install/RUN_${SERVER} > /dev/null
+    ret=$?
+    if [ $ret -eq 0 ]
+    then
+        PID=$(pgrep RUN_${SERVER}\$ | head -1)
+        echo "$PID" > /opt/sybase/sybase.pid
+        echo "$SYBASE_START Success."
+    else
+        echo "$SYBASE_START Failed!"
+        exit 1
+    fi
+}
+
+
+
+startBS() {
+    SYBASE_START=$"Starting ${NAME} backup service: "
+    2>&1 ; $SYBASE/$SYBASE_ASE/bin/startserver \
+    -f $SYBASE/$SYBASE_ASE/install/RUN_${SERVER}_BS > /dev/null
+    ret=$?
+    if [ $ret -eq 0 ]
+    then
+        echo "$SYBASE_START Success."
+    else
+        echo "$SYBASE_START Failed!"
+        exit 1
+    fi
+}
+
+
+stop() {
+    echo -n $"Stopping ${NAME} service: "
+    
+	dosql <<-ESQL
+	shutdown SYB_BACKUP
+	go
+	checkpoint
+	go
+	shutdown
+	go
+	ESQL
+    
+    ret=$?
+    if [ $ret -eq 0 ]
+    then
+        echo "Success."
+    else
+        echo "Failed!"
+        exit 1
+    fi
+}
+
+
+status() {
+    SYBASE_STATUS="Status: "
+    $SYBASE/$SYBASE_ASE/install/showserver
+    ret=$?
+    if [ $ret -ne 0 ]
+    then
+        echo "${SYBASE_STATUS} Failed!"
+        exit 1
+    fi
+}
+
+
+
+restart() {
+    stop && start && startBS
+}
+
+
+case "$1" in
+    
+    start)
+        ( start && startBS )
+    ;;
+    stop)
+        stop
+    ;;
+    restart)
+        restart
+    ;;
+    status)
+        status
+    ;;
+    *)
+        echo $"Usage: $0 {start|stop|restart}"
+        exit 1
+esac
+exit 0
+#eof

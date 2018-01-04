@@ -1,0 +1,21 @@
+#Unit file for Sybase ASE 16.0 
+[Unit]
+Description=SYBASE ASE
+Requires=network.target
+After=network.target
+ 
+[Service]
+ExecStart=/opt/sybase/sybase_start start
+Type=forking
+PIDFile=/opt/sybase/sybase.pid
+ExecStop=/opt/sybase/sybase_start stop
+TimeoutSec=300
+Restart=no
+User=sybase
+
+#Alternative settings
+#TimeoutSec=infinity
+#SendSIGKILL=no
+ 
+[Install]
+WantedBy=multi-user.target
