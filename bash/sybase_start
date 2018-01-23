@@ -1,73 +1,74 @@
 #!/bin/bash
 #
+# vim: set ts=4 sw=4 tw=0 et :
 # Startup script for SAP ASE
 #  Arguments:
 #	$1: start|stop|restart|status
 #
 # Processname: dataserver
 #
+#Changes:
+#20180123 Switched to sed, faster then grep;Local variables.;error handling fixes.
 
-if [ "$(whoami)" != "sybase" ]; then
-        echo "Script must be run as user: sybase"
-        exit -1
-fi
+trap '' EXIT
+trap "exit 2" HUP INT QUIT TERM
+
 
 
 #Increase Max stack size 
 ulimit -s unlimited
 
-SYBASE=/opt/sybase
-readonly SERVER=FLSRV
+readonly SERVER=FLSERVER
 readonly SERVERPW=sybase
 readonly ADMINUSER=sa
 
 # Source environment variables.
+SYBASE=/opt/sybase
 . $SYBASE/SYBASE.sh
 
 # Find the name of the script
 NAME=$(basename "$0")
 
-die() { err "EXIT: $1" && [ "$2" ] && [ "$2" -ge 0 ] && exit "$2" || exit 1; }  
-err() { out "ERROR: $*" 1>&2 |  tee -a "${LOG_FILE}" ; }
+die() { err "EXIT: $1" && [[ $2 -ge 0 ]] && exit $2 || exit 1; }  
+err() { out "ERROR: $*" 1>&2 ; }
 out() { echo "$(date +%Y%m%dT%H%M%S%Z): $*" ; }
-dosql()
-{
-( echo "${SERVERPW}"
-cat  ) | isql -b -w9999 -U${ADMINUSER} -S${SERVER} -Dmaster
+
+if [[ "$(whoami)" != "sybase" ]]; then
+        die "Script must be run as user: sybase"  $((1))
+fi
+
+dosql() {
+    ( echo "${SERVERPW}"
+    cat  ) |  isql -b -w9999 -U${ADMINUSER} -S${SERVER} -Dmaster $* |  sed -e '/Password:/d'  
 }
 
-
-[ "$#" -eq 1 ] || die "1 argument required, $# provided"
+echo "${0}" #show scriptname
+[[ "$#" -eq 1 ]] || die "1 argument required, $# provided"
 
 start() {
-    SYBASE_START=$"Starting ${NAME} service: "
-    2>&1 ;  $SYBASE/$SYBASE_ASE/bin/startserver \
-    -f $SYBASE/$SYBASE_ASE/install/RUN_${SERVER} > /dev/null
+    local SYBASE_START=$"Starting ${NAME} service: "
+    ( $SYBASE/$SYBASE_ASE/bin/startserver -f $SYBASE/$SYBASE_ASE/install/RUN_${SERVER} ) > /dev/null 2>&1
     ret=$?
-    if [ $ret -eq 0 ]
+    if [[ $ret -eq 0 ]]
     then
         PID=$(pgrep RUN_${SERVER}\$ | head -1)
         echo "$PID" > /opt/sybase/sybase.pid
         echo "$SYBASE_START Success."
     else
-        echo "$SYBASE_START Failed!"
-        exit 1
+        die "$SYBASE_START Failed!"  $((1)) 
     fi
 }
 
 
-
 startBS() {
-    SYBASE_START=$"Starting ${NAME} backup service: "
-    2>&1 ; $SYBASE/$SYBASE_ASE/bin/startserver \
-    -f $SYBASE/$SYBASE_ASE/install/RUN_${SERVER}_BS > /dev/null
+    local SYBASE_START=$"Starting ${NAME} backup service: "
+    ( $SYBASE/$SYBASE_ASE/bin/startserver -f $SYBASE/$SYBASE_ASE/install/RUN_${SERVER}_BS ) > /dev/null 2>&1
     ret=$?
-    if [ $ret -eq 0 ]
+    if [[ $ret -eq 0 ]]
     then
         echo "$SYBASE_START Success."
     else
-        echo "$SYBASE_START Failed!"
-        exit 1
+        die "$SYBASE_START Failed!"  $((1)) 
     fi
 }
 
@@ -75,34 +76,33 @@ startBS() {
 stop() {
     echo -n $"Stopping ${NAME} service: "
     
-	dosql <<-ESQL
+	dosql <<-ESQL1
+        set nocount on
 	shutdown SYB_BACKUP
 	go
-	checkpoint
+	checkpoint all
 	go
 	shutdown
 	go
-	ESQL
+	ESQL1
     
-    ret=$?
-    if [ $ret -eq 0 ]
+    local ret=$?
+    if [[ $ret -eq 0 ]]
     then
         echo "Success."
     else
-        echo "Failed!"
-        exit 1
+        die "Stop Failed!" $((1))
     fi
 }
 
 
 status() {
-    SYBASE_STATUS="Status: "
+    local SYBASE_STATUS="Status: "
     $SYBASE/$SYBASE_ASE/install/showserver
-    ret=$?
-    if [ $ret -ne 0 ]
+    local ret=$?
+    if [[ $ret -ne 0 ]]
     then
-        echo "${SYBASE_STATUS} Failed!"
-        exit 1
+        die "Status Failed!" $((1))
     fi
 }
 
@@ -111,6 +111,7 @@ status() {
 restart() {
     stop && start && startBS
 }
+
 
 
 case "$1" in
@@ -128,8 +129,10 @@ case "$1" in
         status
     ;;
     *)
-        echo $"Usage: $0 {start|stop|restart}"
-        exit 1
+    echo $"Usage: $0 {start|stop|restart}"
+    exit 1
 esac
 exit 0
+
+
 #eof

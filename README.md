@@ -20,10 +20,7 @@ Use it as a template to clone/fork/copy modify your own.
 ### TODO
 
 
-Like to have:
-- Small Test script.
-
-
+-
 
 ## Instructions
 
@@ -66,7 +63,7 @@ Configuration variables:
 
   1. SYBASE     Installation path software .
   1. ADMINUSER  Contains name of the database admin login (sa by default).
-  1. SERVERPW   Contains the password for database server ADMINUSER.
+  1. SERVERPW   Contains the password for database server ADMINUSER. (Concider using openssl and encypted password files or a product like vault for storing secrets).
 
 Examples of changes:
 
