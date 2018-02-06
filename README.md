@@ -2,9 +2,13 @@
 
 
 ## Purpose:
-Few scripts for a systemd service type unit for  SAS (Sybase) ASE 16.
+Few scripts for a systemd service type unit for  SAS (Sybase) ASE 16 database server
+and replication server on a single linux instance.
 
-Use it as a template to clone/fork/copy modify your own.
+Use it as a template to clone/fork/copy/split/modify your own.
+
+###License
+MIT
 
 
 ### Files
@@ -18,20 +22,19 @@ Use it as a template to clone/fork/copy modify your own.
 
 
 ### TODO
-
-
--
+-Refactor Hard coded grep for RSSD repagent.
 
 ## Instructions
 
 **Design Notes**:
 
-1. Designed to be a single unit of one dataserver and one backupserver.
+1. Designed to be a single unit of one dataserver and one backupserver and one repserver.
 1. Servers start asynchronously (this is default behaviour of the  startserver script).
 1. Systemd status sybase.service uses showserver.
-1. Backupserver is named SYB_BACKUP (otherwise change the code a bit).
+1. Backupserver is logically named SYB_BACKUP (otherwise change the code a bit).
 1. Shutdown assumes al connections are gone (nowait not used).
 1. Uses the User directive in the Unit file so no su or sudo needed in the script.
+1. Replication server start assumes there is a rep agent running on the RSSD database. 
 1. *Developed on Centos7/ SAS ASE  16 (Express edition) for setting up a test and train VM*.
 
 
@@ -64,11 +67,13 @@ Configuration variables:
   1. SYBASE     Installation path software .
   1. ADMINUSER  Contains name of the database admin login (sa by default).
   1. SERVERPW   Contains the password for database server ADMINUSER. (Concider using openssl and encypted password files or a product like vault for storing secrets).
+  1. Script assumes passwords for ADMINUSER are identical on ASE and REP.
+  1. SERVER  Name of the SAP ASE server
+  1. REPSERVER Name of the Replication server instance (Take the ID server).
 
 Examples of changes:
 
   1. Change it to sap_ase.service.
-  1. Add dependencies to other services.
   1. Use a different account to start services (this example also owns the installation).
   1. Get this password from an encrypted password service or script. 
   1. Change the path to the start stop script.
@@ -80,6 +85,9 @@ Examples of changes:
 ```bash
 systemctl status sybase.service
 ```
+
+
+Notice that this will NOT invoke the bash script  with the status argument, this is how systemd behaves. For detailed status info invoke the script *sybase_start status*.
 
 ```no-highlight
 ● sybase.service - SYBASE ASE

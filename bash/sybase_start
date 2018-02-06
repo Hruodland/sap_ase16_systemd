@@ -1,83 +1,134 @@
 #!/bin/bash
 #
 # vim: set ts=4 sw=4 tw=0 et :
-# Startup script for SAP ASE
-#  Arguments:
-#	$1: start|stop|restart|status
-#
-# Processname: dataserver
-#
-#Changes:
-#20180123 Switched to sed, faster then grep;Local variables.;error handling fixes.
+#----------------------------------------------------------------------
+#File     : @(#) sybase_start  
+#Purpose  : Startup script ASE and REP instance on a single box. 
+#  Starts one ASE instance and one REP instance.
+#           
+#Usage    : sybase_start [start|stop|restart|status]
+#Arguments:$1: command as shown in usage.
+#History  :
+#----------------------------------------------------------------------
+#20180118 Switched to sed, faster then grep;Local variables.;error handling fixes.
+#20180127 Status prints recovery state. 
+#20180205 Added repserver, fixed shellcheck warnings.
+#----------------------------------------------------------------------
 
+#Signal traps
 trap '' EXIT
-trap "exit 2" HUP INT QUIT TERM
+trap "exit 2" HUP INT QUIT TERM SIGINT
 
-
+set -u
 
 #Increase Max stack size 
 ulimit -s unlimited
 
-readonly SERVER=FLSERVER
+#Servers
+readonly SERVER=MYSRVASE
+readonly REPSERVER=PRS
+
+
+#Accounts
 readonly SERVERPW=sybase
 readonly ADMINUSER=sa
 
 # Source environment variables.
 SYBASE=/opt/sybase
 . $SYBASE/SYBASE.sh
+readonly STARTSERVER="${SYBASE}/${SYBASE_ASE}/bin/startserver"
 
 # Find the name of the script
-NAME=$(basename "$0")
+basename=$(basename "$0")
+dirname=$(dirname $0)
+readonly USAGE="Usage: $0 {start|stop|restart|status}"
 
-die() { err "EXIT: $1" && [[ $2 -ge 0 ]] && exit $2 || exit 1; }  
+
+#Numeric Exit code(s)
+declare -i -r  EXIT_FAIL=1
+
+
+die() { err "EXIT: $1" && [[ "$2" -ge 0 ]] && exit "$2" || exit ${EXIT_FAIL}; }  
 err() { out "ERROR: $*" 1>&2 ; }
-out() { echo "$(date +%Y%m%dT%H%M%S%Z): $*" ; }
+out() { printf  "$(date +%Y%m%dT%H%M%S%Z): $*" ; }
 
+
+#Check script startup parameters
 if [[ "$(whoami)" != "sybase" ]]; then
-        die "Script must be run as user: sybase"  $((1))
+        die "Script must be run as user: sybase"  ${EXIT_FAIL}
 fi
 
+printf "${basename}" #show scriptname
+[[ "$#" -eq 1 ]] || die "1 argument required, $# provided \n ${USAGE} \n" ${EXIT_FAIL}
+
+
+
+#Functions to interface with the sql cli
 dosql() {
     ( echo "${SERVERPW}"
-    cat  ) |  isql -b -w9999 -U${ADMINUSER} -S${SERVER} -Dmaster $* |  sed -e '/Password:/d'  
+    cat  ) |  isql -b -w9999 -U"${ADMINUSER}" -S"${SERVER}" -Dmaster |  sed -e '/Password:/d'  
 }
 
-echo "${0}" #show scriptname
-[[ "$#" -eq 1 ]] || die "1 argument required, $# provided"
 
+dosqlREP() {
+    ( echo "${SERVERPW}"
+    cat  ) |  isql -b -w9999 -U"${ADMINUSER}" -S"${REPSERVER}" "$*" |  sed -e '/Password:/d'  
+}
+ 
+
+
+#Service functions
 start() {
-    local SYBASE_START=$"Starting ${NAME} service: "
-    ( $SYBASE/$SYBASE_ASE/bin/startserver -f $SYBASE/$SYBASE_ASE/install/RUN_${SERVER} ) > /dev/null 2>&1
-    ret=$?
+    local SYBASE_START=$"Starting ${SERVER} service: "
+
+    ( ${STARTSERVER} -f "${SYBASE}/${SYBASE_ASE}/install/RUN_${SERVER}" ) > /dev/null 2>&1
+    declare -i ret=$? 
     if [[ $ret -eq 0 ]]
     then
-        PID=$(pgrep RUN_${SERVER}\$ | head -1)
-        echo "$PID" > /opt/sybase/sybase.pid
-        echo "$SYBASE_START Success."
+        PID=$(pgrep "RUN_${SERVER}\$" | head -1)
+        printf "$PID" > /opt/sybase/sybase.pid
+        printf "$SYBASE_START pid: ${PID}  Success.\n"
     else
-        die "$SYBASE_START Failed!"  $((1)) 
+        die "$SYBASE_START Failed!"  ${EXIT_FAIL} 
     fi
 }
 
 
-startBS() {
-    local SYBASE_START=$"Starting ${NAME} backup service: "
-    ( $SYBASE/$SYBASE_ASE/bin/startserver -f $SYBASE/$SYBASE_ASE/install/RUN_${SERVER}_BS ) > /dev/null 2>&1
-    ret=$?
+startREP() {
+    local SYBASE_START=$"Starting ${SERVER} service: "
+    local rssd_started="Started Rep Agent on database, 'PRS_RSSD'" 
+    #Wait for RSSD coming up, assuming RSSD has a rep agent setup.
+    printf 'Waiting for repagent on RSSD' 
+    grep -m 1 "${rssd_started}"  <( tail -f ${SYBASE}/${SYBASE_ASE}/install/${SERVER}.log )
+
+
+    ( ${STARTSERVER} -f "${SYBASE}/${SYBASE_REP}/install/RUN_${REPSERVER}" ) > /dev/null 2>&1
+    declare -i ret=$? 
     if [[ $ret -eq 0 ]]
     then
-        echo "$SYBASE_START Success."
+        printf "$SYBASE_START Success."\n
     else
-        die "$SYBASE_START Failed!"  $((1)) 
+        die "$SYBASE_START Failed!"  ${EXIT_FAIL}
+    fi
+}
+
+startBS() {
+    local SYBASE_START=$"Starting ${SERVER} backup service: "
+    ( ${STARTSERVER} -f "${SYBASE}/${SYBASE_ASE}/install/RUN_${SERVER}_BS" ) > /dev/null 2>&1
+    declare -i ret=$? 
+    if [[ $ret -eq 0 ]]
+    then
+        printf "$SYBASE_START Success."\n
+    else
+        die "$SYBASE_START Failed!"  ${EXIT_FAIL}
     fi
 }
 
 
 stop() {
-    echo -n $"Stopping ${NAME} service: "
-    
+    echo -n $"Stopping ${SERVER} service: "
 	dosql <<-ESQL1
-        set nocount on
+	set nocount on
 	shutdown SYB_BACKUP
 	go
 	checkpoint all
@@ -86,51 +137,75 @@ stop() {
 	go
 	ESQL1
     
-    local ret=$?
+    ret=$?
     if [[ $ret -eq 0 ]]
     then
-        echo "Success."
+        printf "Success."\n
     else
-        die "Stop Failed!" $((1))
+        printf "Warning: Stop Failed!"
     fi
 }
 
+stopREP() {
+    echo -n $"Stopping ${REPSERVER} service: "
+	dosqlREP <<-ESQL1
+	shutdown
+	go
+	ESQL1
+    
+    ret=$?
+    if [[ $ret -eq 0 ]]
+    then
+        printf "Success.\n"
+    else
+        die "Stop Failed!" ${EXIT_FAIL}
+    fi
+}
 
+#status is not called from systemctl status sybase.server, this is how systemctl behaves.
+#Use it for manual script execution.
 status() {
-    local SYBASE_STATUS="Status: "
-    $SYBASE/$SYBASE_ASE/install/showserver
-    local ret=$?
+    "${SYBASE}/${SYBASE_ASE}/install/showserver"
+    declare -i ret=$? 
     if [[ $ret -ne 0 ]]
     then
-        die "Status Failed!" $((1))
+        die "Status Failed!" ${EXIT_FAIL}
     fi
+    printf "\n"
+    printf ' Recovery state                                                          BootTime'
+    printf "\n"
+    printf ' --------------------------------------------------------------------------------------'
+    printf "\n"
+    dosql <<-ESQL
+	set nocount on
+	select @@recovery_state as RecoveryState, @@boottime as BootTime
+	go
+	ESQL
 }
 
 
 
-restart() {
-    stop && start && startBS
-}
-
-
-
+#MAIN --------------------------
 case "$1" in
-    
     start)
-        ( start && startBS )
+        { start && startBS && startREP  ; }
     ;;
     stop)
-        stop
+        { stopREP & stop  ; } 
     ;;
     restart)
-        restart
+        { stop && start && startBS && startREP ; }
     ;;
     status)
-        status
+        { status ; }
+    ;;
+    help) 
+        echo ${USAGE} 1>&2
+        exit 1
     ;;
     *)
-    echo $"Usage: $0 {start|stop|restart}"
-    exit 1
+        echo ${USAGE} 1>&2
+        exit 1
 esac
 exit 0
 
