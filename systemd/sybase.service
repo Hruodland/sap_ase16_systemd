@@ -7,7 +7,7 @@ After=network.target
 [Service]
 ExecStart=/opt/sybase/sybase_start start
 Type=forking
-PIDFile=/opt/sybase/sybase.pid
+PIDFile=/opt/sybase/sybase_start_PID.d/sybase.pid
 ExecStop=/opt/sybase/sybase_start stop
 TimeoutSec=300
 Restart=no

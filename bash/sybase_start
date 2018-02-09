@@ -3,8 +3,8 @@
 # vim: set ts=4 sw=4 tw=0 et :
 #----------------------------------------------------------------------
 #File     : @(#) sybase_start  
+#Author   : Roland van Veen
 #Purpose  : Startup script ASE and REP instance on a single box. 
-#  Starts one ASE instance and one REP instance.
 #           
 #Usage    : sybase_start [start|stop|restart|status]
 #Arguments:$1: command as shown in usage.
@@ -13,30 +13,34 @@
 #20180118 Switched to sed, faster then grep;Local variables.;error handling fixes.
 #20180127 Status prints recovery state. 
 #20180205 Added repserver, fixed shellcheck warnings.
+#20180209 Avoid broken pipe message, moved PID file to /run subdir
 #----------------------------------------------------------------------
 
 #Signal traps
 trap '' EXIT
 trap "exit 2" HUP INT QUIT TERM SIGINT
 
-set -u
 
 #Increase Max stack size 
 ulimit -s unlimited
 
 #Servers
-readonly SERVER=MYSRVASE
-readonly REPSERVER=PRS
+readonly SERVER=SRV     #SAP ASE instance
+readonly REPSERVER=PRS      #SAP REP instance
 
+
+#Databases
+readonly RSSD=RSSD          #RSSD database name
 
 #Accounts
-readonly SERVERPW=sybase
 readonly ADMINUSER=sa
+readonly SERVERPW=sybase
 
 # Source environment variables.
 SYBASE=/opt/sybase
 . $SYBASE/SYBASE.sh
 readonly STARTSERVER="${SYBASE}/${SYBASE_ASE}/bin/startserver"
+set -u
 
 # Find the name of the script
 basename=$(basename "$0")
@@ -61,7 +65,9 @@ fi
 printf "${basename}" #show scriptname
 [[ "$#" -eq 1 ]] || die "1 argument required, $# provided \n ${USAGE} \n" ${EXIT_FAIL}
 
-
+#Directory for PID file.
+readonly RUNDIR="${SYBASE}/${basename}_PID.d"
+mkdir -p ${RUNDIR}
 
 #Functions to interface with the sql cli
 dosql() {
@@ -86,7 +92,7 @@ start() {
     if [[ $ret -eq 0 ]]
     then
         PID=$(pgrep "RUN_${SERVER}\$" | head -1)
-        printf "$PID" > /opt/sybase/sybase.pid
+        printf "$PID" > "${RUNDIR}/sybase.pid"
         printf "$SYBASE_START pid: ${PID}  Success.\n"
     else
         die "$SYBASE_START Failed!"  ${EXIT_FAIL} 
@@ -96,13 +102,15 @@ start() {
 
 startREP() {
     local SYBASE_START=$"Starting ${SERVER} service: "
-    local rssd_started="Started Rep Agent on database, 'PRS_RSSD'" 
+    local rssdname="'${REPSERVER}_${RSSD}'" 
+    local rssd_started="Started Rep Agent on database, ${rssdname}" 
     #Wait for RSSD coming up, assuming RSSD has a rep agent setup.
-    printf 'Waiting for repagent on RSSD' 
-    grep -m 1 "${rssd_started}"  <( tail -f ${SYBASE}/${SYBASE_ASE}/install/${SERVER}.log )
+    printf "Waiting for repagent on ${RSSD} \n" 
 
-
+    #This double tail is to avoid broken pipe messages
+    grep -m 1 "${rssd_started}"  <( tail -f ${SYBASE}/${SYBASE_ASE}/install/${SERVER}.log | tail -n +1 )
     ( ${STARTSERVER} -f "${SYBASE}/${SYBASE_REP}/install/RUN_${REPSERVER}" ) > /dev/null 2>&1
+
     declare -i ret=$? 
     if [[ $ret -eq 0 ]]
     then
@@ -118,7 +126,7 @@ startBS() {
     declare -i ret=$? 
     if [[ $ret -eq 0 ]]
     then
-        printf "$SYBASE_START Success."\n
+        printf "$SYBASE_START Success.\n"
     else
         die "$SYBASE_START Failed!"  ${EXIT_FAIL}
     fi

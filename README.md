@@ -5,13 +5,13 @@
 Few scripts for a systemd service type unit for  SAS (Sybase) ASE 16 database server
 and replication server on a single linux instance.
 
-Use it as a template to clone/fork/copy/split/modify your own.
+Use it as an example to clone/fork/copy/split/modify your own.
 
-###License
+### License
 MIT
 
 
-### Files
+### Files and Directories
 
 |   File              |      Description           |
 |----------------|-------|
@@ -21,8 +21,14 @@ MIT
 
 
 
+|  Dir             |      Description           |
+|------------------|----------------------------|
+|/opt/sybase/sybase_start_PID.d/|PID file directory|
+
+
+
 ### TODO
--Refactor Hard coded grep for RSSD repagent.
+-
 
 ## Instructions
 
@@ -35,7 +41,7 @@ MIT
 1. Shutdown assumes al connections are gone (nowait not used).
 1. Uses the User directive in the Unit file so no su or sudo needed in the script.
 1. Replication server start assumes there is a rep agent running on the RSSD database. 
-1. *Developed on Centos7/ SAS ASE  16 (Express edition) for setting up a test and train VM*.
+1. *Developed on Centos7/ SAS ASE  16 (Express edition) for setting up a test  VM*.
 
 
 ### Installation:
@@ -92,20 +98,27 @@ Notice that this will NOT invoke the bash script  with the status argument, this
 ```no-highlight
 ● sybase.service - SYBASE ASE
    Loaded: loaded (/etc/systemd/system/sybase.service; enabled; vendor preset: disabled)
-   Active: active (running) since Wed 2018-01-03 13:36:45 CET; 9min ago
-  Process: 4547 ExecStop=/opt/sybase/sybase_start stop (code=exited, status=0/SUCCESS)
-  Process: 4587 ExecStart=/opt/sybase/sybase_start start (code=exited, status=0/SUCCESS)
- Main PID: 4594 (RUN_FLSRV)
+   Active: activating (start) since Fri 2018-02-09 08:58:11 CET; 3min 50s ago
+  Process: 1167 ExecStart=/opt/sybase/sybase_start start (code=exited, status=0/SUCCESS)
    CGroup: /system.slice/sybase.service
-           ├─4594 /bin/sh /opt/sybase/ASE-16_0/install/RUN_FLSRV
-           ├─4600 /opt/sybase/ASE-16_0/bin/dataserver -d/opt/sybase/data/mast...
-           ├─4603 /bin/sh /opt/sybase/ASE-16_0/install/RUN_FLSRV_BS
-           ├─4604 /opt/sybase/ASE-16_0/bin/backupserver -e/opt/sybase/ASE-16_...
-           └─4633 /opt/sybase/ASE-16_0/bin/jsagent -p 4900 -n flsrv_centos7 -t 32 -...
+           ├─1252 /bin/sh /opt/sybase/ASE-16_0/install/RUN_SRV
+           ├─1262 /opt/sybase/ASE-16_0/bin/dataserver -d/opt/sybase/data/master.dat -e/opt/sybase/ASE-16_0/install/srv.log -c/opt/sybase/ASE-16_0/SRV.cfg -M/opt/sybase/ASE-16_0 -N/opt/sybase/ASE-16_0/...
+           ├─1374 /bin/sh /opt/sybase/ASE-16_0/install/RUN_SRV_BS
+           ├─1375 /bin/bash /opt/sybase/sybase_start start
+           ├─1378 tail -f /opt/sybase/ASE-16_0/install/SRV.log
+           ├─1379 tail -n +1
+           ├─1393 /opt/sybase/ASE-16_0/bin/backupserver -e/opt/sybase/ASE-16_0/install/srv_BS.log -N25 -C20 -I/opt/sybase/interfaces -M/opt/sybase/ASE-16_0/bin/sybmultbuf -Ssrv_BS
+           ├─1909 /opt/sybase/ASE-16_0/bin/jsagent -p 4900 -n srv -t 32 -l 0 -v -e /opt/sybase/ASE-16_0/install/srv_JSAGENT.log -i /opt/sybase > /dev/null
+           ├─1922 sh -c /opt/sybase/REP-15_5/install/RUN_PRS & 
+           └─1923 /opt/sybase/REP-15_5/bin/repserver -SPRS -C/opt/sybase/REP-15_5/install/PRS.cfg -E/opt/sybase/REP-15_5/install/PRS.log -I/opt/sybase/interfaces
 
-Jan 03 13:36:45 flsrv_centos7 systemd[1]: Starting SYBASE ASE...
-Jan 03 13:36:45 flsrv_centos7 sybase_start[4587]: Starting sybase_start service:  ....
-Jan 03 13:36:45 flsrv_centos7 systemd[1]: Started SYBASE ASE.
+Feb 09 08:58:11 srv systemd[1]: Starting SYBASE ASE...
+
+Feb 09 08:58:14 srv sybase_start[1167]: Starting srv service:  pid: 1252  Success.
+Feb 09 08:58:15 srv sybase_start[1167]: Starting srv backup service:  Success.
+Feb 09 08:58:15 srv sybase_start[1167]: Waiting for repagent on RSSD
+Feb 09 08:59:38 srv sybase_start[1167]: 00:0006:00000:00015:2018/02/09 08:59:37.98 server  Started Rep Agent on database, 'PRS_RSSD' (dbid = 7)
+
 ```
 
 
