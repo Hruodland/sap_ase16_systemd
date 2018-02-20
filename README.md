@@ -2,8 +2,9 @@
 
 
 ## Purpose:
-Few scripts for a systemd service type unit for  SAS (Sybase) ASE 16 database server
-and replication server on a single linux instance.
+Few scripts for a systemd service type unit and rotate logs  for  SAS (Sybase) ASE 16 database server and replication server on a single linux instance.
+This automates starting, stopping and log cleanup.
+
 
 Use it as an example to clone/fork/copy/split/modify your own.
 
@@ -17,6 +18,7 @@ MIT
 |----------------|-------|
 |sybase.service |Service unit file.|
 |sybase_start| Shell script contains the main logic for starting and stopping.|
+|logrotate.d/sapase16|Rotate logs example for an ASE instance | 
 |README	| This file|
 
 
@@ -36,12 +38,11 @@ MIT
 
 1. Designed to be a single unit of one dataserver and one backupserver and one repserver.
 1. Servers start asynchronously (this is default behaviour of the  startserver script).
-1. Systemd status sybase.service uses showserver.
 1. Backupserver is logically named SYB_BACKUP (otherwise change the code a bit).
 1. Shutdown assumes al connections are gone (nowait not used).
 1. Uses the User directive in the Unit file so no su or sudo needed in the script.
 1. Replication server start assumes there is a rep agent running on the RSSD database. 
-1. *Developed on Centos7/ SAS ASE  16 (Express edition) for setting up a test  VM*.
+1. Developed on Centos7/ SAS ASE  16 (Express edition) for setting up a test VM.
 
 
 ### Installation:
@@ -53,6 +54,7 @@ MIT
 1. Copy the sybase_start script to /opt/sybase  path is referred in the unit file).
 1. Make script executable  for login sybase.
 1. sudo systemctl daemon-reload
+1. The logrotate file goes into /etc/logrotate.d (Centos/Redhat), verify path to log file!
 
 Do some testing:
 

@@ -1,0 +1,8 @@
+/opt/sybase/ASE-16_0/install/*.log {
+su sybase sybase
+rotate 10
+copytruncate
+compress
+size 10M
+}
+
