@@ -21,10 +21,11 @@ MIT
 |README	| This file|
 
 
-Creates:
+
+
 |  Dir             |      Description           |
 |------------------|----------------------------|
-|/opt/sybase/sybase_start_PID.d/|PID file directory|
+|/opt/sybase/sybase_start_PID.d/ |PID file directory|
 
 
 
